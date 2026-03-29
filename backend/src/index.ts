@@ -7,10 +7,10 @@ import resumeRoutes from "./routes/resume"
 dotenv.config()
 
 const app = express()
-const PORT = Number(process.env.PORT || 5001);
+const PORT = Number(process.env.PORT || 5050);
 
 app.use(cors())
-app.use(express.json({ limit: "1mn"}))
+app.use(express.json({ limit: "1mb"}))
 
 // const messageContent = AuthenticatorResponse.data?.choices?.[0]?.message?.content
 // if(!messageContent || typeof messageContent !== "string") {
