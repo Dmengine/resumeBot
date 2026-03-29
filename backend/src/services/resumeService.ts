@@ -19,7 +19,7 @@ const FALLBACK_FEEDBACK: ResumeFeedback = {
 
 export async function getResumeFeedback(resumeText: string): Promise<ResumeFeedback> {
     const apiKey = process.env.OPENROUTER_API_KEY;
-    const model = process.env.OPENROUTER_MODEL || "gpt-4o-mini";
+    const model = process.env.OPENROUTER_MODEL || "mistralai/mistral-7b-instruct:free";
 
     if (!apiKey) {
         throw new Error("Missing OpenRouter API key. Please set OPENROUTER_API_KEY in your environment variables.");
