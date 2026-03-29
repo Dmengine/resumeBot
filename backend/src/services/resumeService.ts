@@ -17,9 +17,54 @@ const FALLBACK_FEEDBACK: ResumeFeedback = {
     atsKeywords: []
 }
 
+const DEFAULT_MODEL = "openai/gpt-4o-mini";
+const NO_ENDPOINTS_ERROR = "No endpoints found";
+
+function extractMessageContent(aiResponse: any): string {
+    const message = aiResponse?.data?.choices?.[0]?.message?.content;
+    if (typeof message === "string") {
+        return message;
+    }
+
+    // Some OpenRouter providers may return segmented content arrays.
+    if (Array.isArray(message)) {
+        return message
+            .map((part) => (typeof part?.text === "string" ? part.text : ""))
+            .join("")
+            .trim();
+    }
+
+    return "";
+}
+
+async function requestFeedback(model: string, prompt: string, apiKey: string): Promise<string> {
+    const aiResponse = await axios.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+            model,
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3,
+        },
+        {
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+            },
+            timeout: 30000,
+        }
+    );
+
+    const messageContent = extractMessageContent(aiResponse);
+    if (!messageContent) {
+        throw new Error("AI provider returned an empty response. Please try again later.");
+    }
+
+    return messageContent;
+}
+
 export async function getResumeFeedback(resumeText: string): Promise<ResumeFeedback> {
     const apiKey = process.env.OPENROUTER_API_KEY;
-    const model = process.env.OPENROUTER_MODEL || "gpt-4o-mini";
+    const configuredModel = process.env.OPENROUTER_MODEL?.trim() || DEFAULT_MODEL;
 
     if (!apiKey) {
         throw new Error("Missing OpenRouter API key. Please set OPENROUTER_API_KEY in your environment variables.");
@@ -39,28 +84,22 @@ export async function getResumeFeedback(resumeText: string): Promise<ResumeFeedb
         resumeText.slice(0, 12000),
     ].join("\n");
 
-    const aiResponse = await axios.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-            model,
-            messages: [{ role: "user", content: prompt }],
-            temperature: 0.3,
-        },
-        {
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            timeout: 30000,
+    try {
+        const messageContent = await requestFeedback(configuredModel, prompt, apiKey);
+        return parseFeedback(messageContent);
+    } catch (error) {
+        const shouldRetryWithDefaultModel =
+            axios.isAxiosError(error) &&
+            configuredModel !== DEFAULT_MODEL &&
+            (error.response?.data?.error?.message || "").includes(NO_ENDPOINTS_ERROR);
+
+        if (!shouldRetryWithDefaultModel) {
+            throw error;
         }
-    );
 
-    const messageContent = aiResponse.data?.choices?.[0]?.message?.content;
-    if(!messageContent || typeof messageContent !== "string") {
-        throw new Error('AI provider returned an empty response. Please try again later.');
+        const fallbackContent = await requestFeedback(DEFAULT_MODEL, prompt, apiKey);
+        return parseFeedback(fallbackContent);
     }
-
-    return parseFeedback(messageContent);
 }
 
 function parseFeedback(content: string): ResumeFeedback {
